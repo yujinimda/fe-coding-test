@@ -257,9 +257,12 @@ jobs:
 
             console.log("Day" + dayStr + " 이슈 생성 완료: " + problem.title);
 
+            // dayStr을 다음 step에서 사용할 수 있도록 출력
+            core.exportVariable("DAY_STR", dayStr);
+
       - name: 문제 파일 커밋 & 푸시
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add problems/
-          git diff --cached --quiet || (git commit -m "📝 Day$(ls problems/ | wc -l) 문제 추가" && git push)
+          git diff --cached --quiet || (git commit -m "📝 Day${DAY_STR} 문제 추가" && git push)
