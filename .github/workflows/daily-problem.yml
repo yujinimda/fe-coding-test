@@ -9,12 +9,17 @@ jobs:
   generate-problem:
     runs-on: ubuntu-latest
     steps:
+      - name: 레포 체크아웃
+        uses: actions/checkout@v4
+
       - name: 어제 문제 정답 공개 + 오늘 문제 생성
         uses: actions/github-script@v7
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
           script: |
+            const fs = require("fs");
+            const path = require("path");
             const fence = "```";
 
             // ============================
@@ -186,6 +191,37 @@ jobs:
               return (i + 1) + ". " + r;
             }).join("\n");
 
+            // ============================
+            // 3. problems 폴더에 문제 파일 생성
+            // ============================
+            const dirPath = path.join("problems", "day" + dayStr);
+            fs.mkdirSync(dirPath, { recursive: true });
+
+            const problemMd = "# [Day" + dayStr + "] " + cat.emoji + " " + problem.title + "\n\n"
+              + "**카테고리:** " + cat.emoji + " " + cat.label + "\n"
+              + "**난이도:** " + diffBadge + "\n"
+              + "**제한 시간:** " + timeLimit + "\n\n"
+              + "---\n\n"
+              + "## 문제\n\n"
+              + problem.description + "\n\n"
+              + "## 코드\n\n"
+              + fence + "typescript\n"
+              + problem.code + "\n"
+              + fence + "\n\n"
+              + "## 요구사항\n\n"
+              + reqs + "\n\n"
+              + "## 힌트\n\n"
+              + "<details>\n"
+              + "<summary>💡 힌트 보기</summary>\n\n"
+              + problem.hint + "\n\n"
+              + "</details>\n";
+
+            fs.writeFileSync(path.join(dirPath, "README.md"), problemMd);
+            console.log("problems/day" + dayStr + "/README.md 파일 생성 완료");
+
+            // ============================
+            // 4. Issue 생성
+            // ============================
             const issueBody = "## " + problem.title + "\n\n"
               + "**카테고리:** " + cat.emoji + " " + cat.label + "\n"
               + "**난이도:** " + diffBadge + "\n"
@@ -219,4 +255,11 @@ jobs:
               labels: ["daily-problem", cat.id, diff.toLowerCase()],
             });
 
-            console.log("Day" + dayStr + " 문제 생성 완료: " + problem.title);
+            console.log("Day" + dayStr + " 이슈 생성 완료: " + problem.title);
+
+      - name: 문제 파일 커밋 & 푸시
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add problems/
+          git diff --cached --quiet || (git commit -m "📝 Day$(ls problems/ | wc -l) 문제 추가" && git push)
