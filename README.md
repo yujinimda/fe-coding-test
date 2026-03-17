@@ -30,17 +30,17 @@ cd fe-coding-test
 ```bash
 git checkout main
 git pull origin main
-git checkout -b day01/팀원1
+git checkout -b day01/팀원1(본인이름)
 ```
 
-> 브랜치 이름: `day{번호}/{이름}` (예: `day01/유진`, `day01/아름`)
+> 브랜치 이름: `day{번호}/{본인이름}` (예: `day01/팀원1`, `day01/팀원2`)
 
 ### 3. 풀이 작성
 
 ```
 problems/
   day01/
-    팀원1.ts
+    팀원1(본인이름).ts
   day02/
     팀원1.ts
     팀원2.ts
