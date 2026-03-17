@@ -2,7 +2,7 @@ name: "\U0001F3B2 오늘의 문제 자동 생성"
 
 on:
   schedule:
-    - cron: "0 15 * * *"
+    - cron: "47 0 * * *"
   workflow_dispatch:
 
 jobs:
