@@ -186,6 +186,10 @@ jobs:
             const raw = data.choices[0].message.content.replace(/```json|```/g, "").trim();
             const problem = JSON.parse(raw);
 
+            // 코드 줄바꿈 처리
+            problem.code = problem.code.replace(/\\n/g, "\n").replace(/\\t/g, "  ");
+            problem.referenceSolution = problem.referenceSolution.replace(/\\n/g, "\n").replace(/\\t/g, "  ");
+
             const diffBadge = diff === "Easy" ? "🟢 Easy" : "🟡 Medium";
             const reqs = problem.requirements.map(function(r, i) {
               return (i + 1) + ". " + r;
