@@ -1,0 +1,238 @@
+name: 🎲 오늘의 문제 자동 생성
+
+on:
+  schedule:
+    # 매일 자정 (KST) = UTC 15:00
+    - cron: "0 15 * * *"
+  workflow_dispatch: # 수동 실행도 가능
+
+jobs:
+  generate-problem:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 어제 문제 정답 공개 + 오늘 문제 생성
+        uses: actions/github-script@v7
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          script: |
+            // ========================================
+            // 1. 어제 문제에 정답 댓글 달기
+            // ========================================
+            const allIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: "daily-problem",
+              state: "open",
+              sort: "created",
+              direction: "desc",
+              per_page: 1,
+            });
+
+            if (allIssues.data.length > 0) {
+              const yesterdayIssue = allIssues.data[0];
+              const body = yesterdayIssue.body || "";
+
+              // 숨겨진 정답 추출
+              const match = body.match(/<!--SOLUTION\n([\s\S]*?)\n-->/);
+              if (match) {
+                const solution = match[1];
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: yesterdayIssue.number,
+                  body: `## 📝 레퍼런스 정답\n\n\`\`\`typescript\n${solution}\n\`\`\`\n\n> 자신의 풀이와 비교해보세요! 다른 접근 방식도 정답일 수 있습니다.`,
+                });
+                console.log(`✅ Issue #${yesterdayIssue.number}에 정답 댓글 등록 완료`);
+              }
+            }
+
+            // ========================================
+            // 2. 오늘 문제 생성
+            // ========================================
+            const categories = [
+              {
+                id: "typescript",
+                label: "🔷 TypeScript",
+                topics: [
+                  "API 응답 타입 설계 및 any 제거",
+                  "제네릭을 활용한 재사용 가능한 타입 만들기",
+                  "유틸리티 타입(Partial, Pick, Omit, Record) 활용",
+                  "유니온 타입과 타입 가드로 안전한 분기 처리",
+                  "폼 데이터 타입 설계",
+                  "이벤트 핸들러 타입 정의",
+                  "discriminated union으로 상태 모델링",
+                  "as const와 typeof를 활용한 상수 타입 추론",
+                  "mapped type으로 동적 타입 생성",
+                  "조건부 타입(Conditional Type) 활용",
+                ],
+              },
+              {
+                id: "react",
+                label: "⚛️ React",
+                topics: [
+                  "불필요한 리렌더링 원인 분석 및 최적화 (memo, useCallback, useMemo)",
+                  "커스텀 훅 구현 (useDebounce, useThrottle, useLocalStorage 등)",
+                  "Context API 성능 최적화",
+                  "복합 컴포넌트 패턴 구현 (Dropdown, Tab 등)",
+                  "무한 스크롤 구현 (IntersectionObserver)",
+                  "낙관적 업데이트 패턴 구현",
+                  "useReducer로 복잡한 상태 로직 리팩토링",
+                  "forwardRef와 useImperativeHandle 활용",
+                  "에러 바운더리와 Suspense 활용",
+                  "비제어 → 제어 컴포넌트 전환",
+                ],
+              },
+              {
+                id: "nextjs",
+                label: "▲ Next.js",
+                topics: [
+                  "서버 컴포넌트 vs 클라이언트 컴포넌트 분리",
+                  "동적 라우팅과 params 타입 처리",
+                  "미들웨어로 인증 라우트 보호",
+                  "서버 액션(Server Actions)으로 폼 처리",
+                  "generateMetadata로 동적 SEO",
+                  "Route Handler에서 API 설계",
+                  "loading·error·not-found 에러 처리 패턴",
+                  "캐싱 전략 (revalidate, tags)",
+                  "SSR prefetch 패턴",
+                  "병렬 라우트 활용",
+                ],
+              },
+              {
+                id: "javascript",
+                label: "⚡ JavaScript",
+                topics: [
+                  "디바운스 / 스로틀 직접 구현",
+                  "깊은 복사(deep clone) 구현",
+                  "Promise.all / Promise.race 구현",
+                  "배열 메서드 직접 구현 (map, filter, reduce, flat)",
+                  "커링(curry) 함수 구현",
+                  "이벤트 이미터(EventEmitter) 구현",
+                  "클로저를 활용한 유틸 함수",
+                  "this 바인딩 문제 해결",
+                  "이벤트 루프 실행 순서 예측",
+                  "Proxy로 반응형 객체 구현",
+                ],
+              },
+              {
+                id: "algorithm",
+                label: "🧩 알고리즘",
+                topics: [
+                  "트리 구조 탐색 (메뉴, 댓글, 폴더)",
+                  "다중 조건 정렬",
+                  "URL·쿼리스트링 파싱",
+                  "DOM 트리 BFS/DFS 순회",
+                  "해시맵 빈도 계산",
+                  "스택으로 괄호 매칭",
+                  "슬라이딩 윈도우",
+                  "이진 탐색 응용",
+                  "재귀와 메모이제이션",
+                  "배열 조합 찾기",
+                ],
+              },
+            ];
+
+            const difficulties = ["Easy", "Medium"];
+
+            // 랜덤 선택
+            const cat = categories[Math.floor(Math.random() * categories.length)];
+            const topic = cat.topics[Math.floor(Math.random() * cat.topics.length)];
+            const diff = difficulties[Math.floor(Math.random() * difficulties.length)];
+            const timeLimit = cat.id === "algorithm" ? "20분" : "15분";
+
+            // Day 번호 계산
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: "daily-problem",
+              state: "all",
+            });
+            const dayNum = existingIssues.data.length + 1;
+            const dayStr = String(dayNum).padStart(2, "0");
+
+            // OpenAI API로 문제 생성
+            const prompt = `프론트엔드 코딩테스트 문제를 하나 만들어줘.
+
+            카테고리: ${cat.label}
+            주제: ${topic}
+            난이도: ${diff}
+            제한 시간: ${timeLimit}
+
+            조건:
+            - 실무에서 실제로 마주칠 수 있는 상황 기반 (쇼핑몰, 대시보드, 게시판, 채팅, 관리자 페이지 등)
+            - 문제 코드 포함
+            - 요구사항 3~4개
+
+            아래 JSON 형식으로만 응답해. 마크다운 백틱이나 설명 없이 순수 JSON만:
+            {"title":"문제 제목","description":"문제 설명","code":"문제 코드","requirements":["요구사항1","요구사항2","요구사항3"],"hint":"힌트","referenceSolution":"레퍼런스 정답 코드"}`;
+
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 1.0,
+              }),
+            });
+
+            const data = await res.json();
+            const raw = data.choices[0].message.content.replace(/```json|```/g, "").trim();
+            const problem = JSON.parse(raw);
+
+            // Issue 본문 (정답은 HTML 주석으로 숨김)
+            const issueBody = `## ${problem.title}
+
+**카테고리:** ${cat.label}
+**난이도:** ${diff === "Easy" ? "🟢 Easy" : "🟡 Medium"}
+**제한 시간:** ${timeLimit}
+
+---
+
+### 문제
+
+${problem.description}
+
+### 코드
+
+\`\`\`typescript
+${problem.code}
+\`\`\`
+
+### 요구사항
+
+${problem.requirements.map((r, i) => `${i + 1}. ${r}`).join("\n")}
+
+### 힌트
+
+<details>
+<summary>💡 힌트 보기</summary>
+
+${problem.hint}
+
+</details>
+
+---
+
+> 🤖 이 문제는 AI에 의해 자동 생성되었습니다.
+> 풀이는 PR로 제출해주세요! 정답은 **다음 날 자정**에 댓글로 공개됩니다.
+
+<!--SOLUTION
+${problem.referenceSolution}
+-->`;
+
+            // Issue 생성
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Day${dayStr}] ${cat.label} ${problem.title}`,
+              body: issueBody,
+              labels: ["daily-problem", cat.id, diff.toLowerCase()],
+            });
+
+            console.log(`✅ Day${dayStr} 문제 생성 완료: ${problem.title}`);
