@@ -20,3 +20,4 @@ console.log(totalPrice2);
 
 // 4. flat 메서드를 사용하여 여러 카테고리로 나누어진 상품 배열을 한 단계 평탄화하세요.
 console.log(products.flat());
+// ㅎㅇㅎㅇ
