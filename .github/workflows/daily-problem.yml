@@ -1,4 +1,4 @@
-name: "\U0001F3B2 오늘의 문제 자동 생성"
+name: "🎲 오늘의 문제 자동 생성"
 
 on:
   schedule:
@@ -8,6 +8,10 @@ on:
 jobs:
   generate-problem:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
     steps:
       - name: 레포 체크아웃
         uses: actions/checkout@v4
@@ -22,42 +26,325 @@ jobs:
             const path = require("path");
             const fence = "```";
 
+            function assert(condition, message) {
+              if (!condition) throw new Error(message);
+            }
+
+            function normalize(value) {
+              return String(value || "")
+                .replace(/\r\n/g, "\n")
+                .replace(/\r/g, "\n")
+                .trim();
+            }
+
+            function validateProblem(problem) {
+              assert(problem && typeof problem === "object", "문제 JSON이 객체가 아닙니다.");
+              assert(typeof problem.title === "string" && problem.title.trim().length >= 5, "title이 비어있거나 너무 짧습니다.");
+              assert(typeof problem.description === "string" && problem.description.trim().length >= 20, "description이 비어있거나 너무 짧습니다.");
+              assert(typeof problem.code === "string" && problem.code.trim().length >= 30, "code가 비어있거나 너무 짧습니다.");
+              assert(Array.isArray(problem.requirements), "requirements가 배열이 아닙니다.");
+              assert(problem.requirements.length >= 3 && problem.requirements.length <= 4, "requirements는 3~4개여야 합니다.");
+              assert(problem.requirements.every((r) => typeof r === "string" && r.trim()), "requirements 안에 빈 항목이 있습니다.");
+              assert(typeof problem.hint === "string" && problem.hint.trim().length >= 5, "hint가 비어있거나 너무 짧습니다.");
+              assert(typeof problem.referenceSolution === "string" && problem.referenceSolution.trim().length >= 30, "referenceSolution이 비어있거나 너무 짧습니다.");
+
+              const textAll = [
+                problem.title,
+                problem.description,
+                problem.code,
+                problem.requirements.join("\n"),
+                problem.referenceSolution,
+              ].join("\n").toLowerCase();
+
+              assert(!/lorem ipsum/.test(textAll), "더미 텍스트가 포함되어 있습니다.");
+              assert(!/todo|작성하세요\s*$/.test(problem.referenceSolution.toLowerCase()), "referenceSolution이 미완성입니다.");
+
+              const saysMakeType =
+                /타입을 만들어|type을 만들어|interface를 만들어|type alias/i.test(problem.title) ||
+                /타입을 만들어|type을 만들어|interface를 만들어|type alias/i.test(problem.description);
+
+              const solutionLooksLikeType =
+                /\btype\s+\w+\s*=/.test(problem.referenceSolution) ||
+                /\binterface\s+\w+\s*\{/.test(problem.referenceSolution);
+
+              if (saysMakeType) {
+                assert(solutionLooksLikeType, "설명은 타입 생성 문제인데 정답에 타입 정의가 없습니다.");
+              }
+
+              const saysMakeFunction =
+                /함수를 작성|함수를 구현|구현하세요|작성하세요/i.test(problem.title) ||
+                /함수를 작성|함수를 구현|구현하세요|작성하세요/i.test(problem.description);
+
+              const solutionLooksLikeFunction =
+                /\bfunction\b/.test(problem.referenceSolution) || /=>/.test(problem.referenceSolution);
+
+              if (saysMakeFunction) {
+                assert(solutionLooksLikeFunction, "설명은 함수 구현 문제인데 정답이 함수 구현 형태가 아닙니다.");
+              }
+
+              return {
+                title: normalize(problem.title),
+                description: normalize(problem.description),
+                code: normalize(problem.code),
+                requirements: problem.requirements.map((r) => normalize(r)),
+                hint: normalize(problem.hint),
+                referenceSolution: normalize(problem.referenceSolution),
+              };
+            }
+
+            async function createChatCompletion(body) {
+              const res = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer " + process.env.OPENAI_API_KEY,
+                },
+                body: JSON.stringify(body),
+              });
+
+              if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error("OpenAI API 호출 실패: " + errorText);
+              }
+
+              return res.json();
+            }
+
+            async function generateProblem({ cat, topic, diff, timeLimit }) {
+              const developerPrompt = [
+                "너는 프론트엔드 코딩테스트 문제 출제기다.",
+                "반드시 JSON 스키마에 맞는 값만 반환한다.",
+                "문제 설명, 코드, 요구사항, 힌트, referenceSolution은 서로 완전히 일치해야 한다.",
+                "모든 요구사항은 반드시 code에 포함된 데이터만으로 해결 가능해야 한다.",
+                "code에 없는 필드, 상태, API, 외부 입력, 추가 가정을 요구하면 안 된다.",
+                "제목과 설명의 과제 유형은 referenceSolution과 반드시 같아야 한다.",
+                "\"타입을 만들어라\"라고 쓰면 반드시 type/interface/type alias를 직접 정의하는 문제여야 한다.",
+                "\"함수를 작성하라\"라고 쓰면 반드시 함수 구현 문제여야 한다.",
+                "실무 상황 기반으로 만들고, 요구사항은 3~4개만 작성한다.",
+                "referenceSolution은 실제로 동작 가능한 정답 코드여야 하며 TODO나 의사코드를 넣지 않는다.",
+                "응답 전에 내부적으로 자기검사를 수행하고, 불일치가 있으면 처음부터 다시 작성한다."
+              ].join("\n");
+
+              const userPrompt = [
+                "프론트엔드 코딩테스트 문제를 하나 만들어줘.",
+                "",
+                "카테고리: " + cat.emoji + " " + cat.label,
+                "주제: " + topic,
+                "난이도: " + diff,
+                "제한 시간: " + timeLimit,
+                "",
+                "세부 조건:",
+                "- 실무에서 실제로 마주칠 수 있는 상황 기반 (쇼핑몰, 대시보드, 게시판, 채팅, 관리자 페이지 등)",
+                "- 문제 코드에는 충분한 데이터(배열, 객체 등)를 포함해서 바로 풀 수 있게 할 것",
+                "- 요구사항은 반드시 제공된 코드 데이터로만 해결 가능해야 할 것",
+                "- 요구사항끼리 논리적으로 연결되고, 모순이 없어야 할 것",
+                "- description은 2~4문장",
+                "- code는 복사 후 바로 풀이 가능한 완전한 코드",
+                "- hint는 정답을 직접 노출하지 말고 짧은 방향 제시",
+                "- referenceSolution은 실제 정답 코드",
+                "",
+                "잘못된 예시:",
+                '- 설명: "제네릭을 활용해 타입을 만들어 보세요"',
+                "- 실제 정답: 제네릭 함수만 구현",
+                "- 이런 불일치는 절대 허용하지 마라."
+              ].join("\n");
+
+              const schema = {
+                name: "daily_problem",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    code: { type: "string" },
+                    requirements: {
+                      type: "array",
+                      minItems: 3,
+                      maxItems: 4,
+                      items: { type: "string" }
+                    },
+                    hint: { type: "string" },
+                    referenceSolution: { type: "string" }
+                  },
+                  required: ["title", "description", "code", "requirements", "hint", "referenceSolution"]
+                }
+              };
+
+              const data = await createChatCompletion({
+                model: "gpt-4o",
+                temperature: 0.2,
+                response_format: {
+                  type: "json_schema",
+                  json_schema: schema
+                },
+                messages: [
+                  { role: "developer", content: developerPrompt },
+                  { role: "user", content: userPrompt }
+                ]
+              });
+
+              const content = data?.choices?.[0]?.message?.content;
+              assert(content, "생성 응답 content가 비어 있습니다.");
+
+              const parsed = JSON.parse(content);
+              return validateProblem(parsed);
+            }
+
+            async function reviewProblem(problem, { cat, topic, diff, timeLimit }) {
+              const reviewSchema = {
+                name: "problem_review",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    pass: { type: "boolean" },
+                    score: { type: "integer", minimum: 0, maximum: 100 },
+                    issues: {
+                      type: "array",
+                      items: { type: "string" }
+                    },
+                    fixedProblem: {
+                      anyOf: [
+                        { type: "null" },
+                        {
+                          type: "object",
+                          additionalProperties: false,
+                          properties: {
+                            title: { type: "string" },
+                            description: { type: "string" },
+                            code: { type: "string" },
+                            requirements: {
+                              type: "array",
+                              minItems: 3,
+                              maxItems: 4,
+                              items: { type: "string" }
+                            },
+                            hint: { type: "string" },
+                            referenceSolution: { type: "string" }
+                          },
+                          required: ["title", "description", "code", "requirements", "hint", "referenceSolution"]
+                        }
+                      ]
+                    }
+                  },
+                  required: ["pass", "score", "issues", "fixedProblem"]
+                }
+              };
+
+              const reviewDeveloperPrompt = [
+                "너는 프론트엔드 코딩테스트 문제 검수자다.",
+                "입력된 문제의 제목, 설명, 코드, 요구사항, 힌트, 정답 코드가 서로 일치하는지 엄격하게 검수한다.",
+                "실무 맥락, 요구사항 충족 가능성, 정답의 실행 가능성, 제목-설명-정답의 일치 여부를 본다.",
+                "사소한 문장 수정으로 해결 가능하면 fixedProblem에 수정본을 넣는다.",
+                "문제가 크게 어긋나면 pass=false로 내리고 issues에 이유를 적는다.",
+                "\"타입을 만들어라\"라고 쓰였는데 정답이 함수 구현이면 반드시 실패 처리한다.",
+                "code에 없는 데이터나 전제를 요구하면 반드시 실패 처리한다.",
+                "반드시 JSON 스키마에 맞춰 응답한다."
+              ].join("\n");
+
+              const reviewUserPrompt = [
+                "다음 문제를 검수해줘.",
+                "",
+                "카테고리: " + cat.label,
+                "주제: " + topic,
+                "난이도: " + diff,
+                "제한 시간: " + timeLimit,
+                "",
+                "검수 기준:",
+                "1. 제목/설명/정답이 같은 과제를 가리키는가",
+                "2. 요구사항 3~4개가 모두 code만으로 해결 가능한가",
+                "3. referenceSolution이 실제로 요구사항을 만족하는가",
+                "4. 힌트가 정답을 너무 직접적으로 노출하지 않는가",
+                "5. 난이도와 주제가 자연스러운가",
+                "",
+                "문제 JSON:",
+                JSON.stringify(problem)
+              ].join("\n");
+
+              const data = await createChatCompletion({
+                model: "gpt-4o",
+                temperature: 0,
+                response_format: {
+                  type: "json_schema",
+                  json_schema: reviewSchema
+                },
+                messages: [
+                  { role: "developer", content: reviewDeveloperPrompt },
+                  { role: "user", content: reviewUserPrompt }
+                ]
+              });
+
+              const content = data?.choices?.[0]?.message?.content;
+              assert(content, "검수 응답 content가 비어 있습니다.");
+
+              const review = JSON.parse(content);
+              assert(typeof review.pass === "boolean", "검수 결과의 pass가 없습니다.");
+              assert(typeof review.score === "number", "검수 결과의 score가 없습니다.");
+              assert(Array.isArray(review.issues), "검수 결과의 issues가 배열이 아닙니다.");
+
+              if (review.fixedProblem) {
+                review.fixedProblem = validateProblem(review.fixedProblem);
+              }
+
+              return review;
+            }
+
             // ============================
-            // 1. 어제 문제에 정답 댓글 달기
+            // 1. 이전 문제 정답 댓글
             // ============================
-            const prevIssues = await github.rest.issues.listForRepo({
+            const recentIssues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               labels: "daily-problem",
-              state: "open",
+              state: "all",
               sort: "created",
               direction: "desc",
-              per_page: 1,
+              per_page: 5,
             });
 
-            if (prevIssues.data.length > 0) {
-              const prev = prevIssues.data[0];
+            if (recentIssues.data.length > 0) {
+              const prev = recentIssues.data[0];
               const prevBody = prev.body || "";
               const solMatch = prevBody.match(/<!--SOLUTION\n([\s\S]*?)\n-->/);
+
               if (solMatch) {
-                const sol = solMatch[1];
-                const commentBody = "## 📝 레퍼런스 정답\n\n"
-                  + fence + "typescript\n"
-                  + sol + "\n"
-                  + fence + "\n\n"
-                  + "> 자신의 풀이와 비교해보세요! 다른 접근 방식도 정답일 수 있습니다.";
-                await github.rest.issues.createComment({
+                const comments = await github.rest.issues.listComments({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prev.number,
-                  body: commentBody,
+                  per_page: 100,
                 });
-                console.log("어제 문제 #" + prev.number + " 정답 댓글 등록 완료");
+
+                const alreadyPosted = comments.data.some((comment) =>
+                  (comment.body || "").includes("## 📝 레퍼런스 정답")
+                );
+
+                if (!alreadyPosted) {
+                  const sol = normalize(solMatch[1]);
+                  const commentBody =
+                    "## 📝 레퍼런스 정답\n\n"
+                    + fence + "typescript\n"
+                    + sol + "\n"
+                    + fence + "\n\n"
+                    + "> 자신의 풀이와 비교해보세요! 다른 접근 방식도 정답일 수 있습니다.";
+
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: prev.number,
+                    body: commentBody,
+                  });
+
+                  console.log("이전 문제 #" + prev.number + " 정답 댓글 등록 완료");
+                }
               }
             }
 
             // ============================
-            // 2. 오늘 문제 생성
+            // 2. 오늘 문제 생성 준비
             // ============================
             const categories = [
               {
@@ -153,59 +440,56 @@ jobs:
               repo: context.repo.repo,
               labels: "daily-problem",
               state: "all",
+              per_page: 100,
             });
+
             const dayNum = existingIssues.data.length + 1;
             const dayStr = String(dayNum).padStart(2, "0");
 
-            const prompt = "프론트엔드 코딩테스트 문제를 하나 만들어줘.\n\n"
-              + "카테고리: " + cat.emoji + " " + cat.label + "\n"
-              + "주제: " + topic + "\n"
-              + "난이도: " + diff + "\n"
-              + "제한 시간: " + timeLimit + "\n\n"
-              + "조건:\n"
-              + "- 실무에서 실제로 마주칠 수 있는 상황 기반 (쇼핑몰, 대시보드, 게시판, 채팅, 관리자 페이지 등)\n"
-              + "- 문제 코드에 충분한 데이터(배열, 객체 등)를 포함해서 바로 풀 수 있게 해줘\n"
-              + "- 요구사항은 반드시 제공된 코드 데이터로 풀 수 있어야 해. 코드에 없는 데이터를 요구하지 마\n"
-              + "- 요구사항끼리 논리적으로 연결되고, 모순이 없어야 해\n"
-              + "- 요구사항 3~4개\n"
-              + "- 코드는 들여쓰기를 포함한 완전한 코드로 작성해줘\n"
-              + "- referenceSolution은 실제로 동작하는 정답 코드를 작성해줘\n\n"
-              + "아래 JSON 형식으로만 응답해. 마크다운 백틱이나 설명 없이 순수 JSON만:\n"
-              + '{"title":"문제 제목","description":"문제 설명","code":"문제 코드","requirements":["요구사항1","요구사항2","요구사항3"],"hint":"힌트","referenceSolution":"레퍼런스 정답 코드"}';
+            // ============================
+            // 3. 생성 + 검수 (최대 3회 시도)
+            // ============================
+            let finalProblem = null;
+            let lastReview = null;
 
-            const res = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + process.env.OPENAI_API_KEY,
-              },
-              body: JSON.stringify({
-                model: "gpt-4o",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.4,
-              }),
-            });
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              console.log("문제 생성 시도 #" + attempt);
 
-            const data = await res.json();
-            const raw = data.choices[0].message.content.replace(/```json|```/g, "").trim();
-            const problem = JSON.parse(raw);
+              const generated = await generateProblem({ cat, topic, diff, timeLimit });
+              const review = await reviewProblem(generated, { cat, topic, diff, timeLimit });
 
-            // 코드 줄바꿈 처리
-            problem.code = problem.code.replace(/\\n/g, "\n").replace(/\\t/g, "  ");
-            problem.referenceSolution = problem.referenceSolution.replace(/\\n/g, "\n").replace(/\\t/g, "  ");
+              lastReview = review;
 
+              console.log("검수 점수:", review.score);
+              console.log("검수 이슈:", review.issues.join(" | ") || "없음");
+
+              if (review.pass) {
+                finalProblem = review.fixedProblem || generated;
+                console.log("검수 통과");
+                break;
+              }
+
+              if (!review.pass && review.fixedProblem && review.score >= 85) {
+                finalProblem = review.fixedProblem;
+                console.log("검수 보정본 채택");
+                break;
+              }
+            }
+
+            assert(finalProblem, "검수 통과 문제를 만들지 못했습니다. 마지막 이슈: " + JSON.stringify(lastReview?.issues || []));
+
+            const problem = finalProblem;
             const diffBadge = diff === "Easy" ? "🟢 Easy" : "🟡 Medium";
-            const reqs = problem.requirements.map(function(r, i) {
-              return (i + 1) + ". " + r;
-            }).join("\n");
+            const reqs = problem.requirements.map((r, i) => `${i + 1}. ${r}`).join("\n");
 
             // ============================
-            // 3. problems 폴더에 문제 파일 생성
+            // 4. README 생성
             // ============================
             const dirPath = path.join("problems", "day" + dayStr);
             fs.mkdirSync(dirPath, { recursive: true });
 
-            const problemMd = "# [Day" + dayStr + "] " + cat.emoji + " " + problem.title + "\n\n"
+            const problemMd =
+              "# [Day" + dayStr + "] " + cat.emoji + " " + problem.title + "\n\n"
               + "**카테고리:** " + cat.emoji + " " + cat.label + "\n"
               + "**난이도:** " + diffBadge + "\n"
               + "**제한 시간:** " + timeLimit + "\n\n"
@@ -228,9 +512,10 @@ jobs:
             console.log("problems/day" + dayStr + "/README.md 파일 생성 완료");
 
             // ============================
-            // 4. Issue 생성
+            // 5. Issue 생성
             // ============================
-            const issueBody = "## " + problem.title + "\n\n"
+            const issueBody =
+              "## " + problem.title + "\n\n"
               + "**카테고리:** " + cat.emoji + " " + cat.label + "\n"
               + "**난이도:** " + diffBadge + "\n"
               + "**제한 시간:** " + timeLimit + "\n\n"
@@ -249,7 +534,7 @@ jobs:
               + problem.hint + "\n\n"
               + "</details>\n\n"
               + "---\n\n"
-              + "> 🤖 이 문제는 AI에 의해 자동 생성되었습니다.\n"
+              + "> 🤖 이 문제는 AI에 의해 자동 생성되었고, 생성 후 검수 단계를 거쳤습니다.\n"
               + "> 풀이는 PR로 제출해주세요! 정답은 **다음 날 자정**에 댓글로 공개됩니다.\n\n"
               + "<!--SOLUTION\n"
               + problem.referenceSolution + "\n"
@@ -264,8 +549,6 @@ jobs:
             });
 
             console.log("Day" + dayStr + " 이슈 생성 완료: " + problem.title);
-
-            // dayStr을 다음 step에서 사용할 수 있도록 출력
             core.exportVariable("DAY_STR", dayStr);
 
       - name: 문제 파일 커밋 & 푸시
