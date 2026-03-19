@@ -2,7 +2,7 @@ name: "🎲 오늘의 문제 자동 생성"
 
 on:
   schedule:
-    - cron: "0 15 * * *"
+    - cron: "0 16 * * *"
   workflow_dispatch:
 
 jobs:
@@ -37,6 +37,10 @@ jobs:
                 .trim();
             }
 
+            function hasKorean(text) {
+              return /[가-힣]/.test(String(text || ""));
+            }
+
             function validateProblem(problem) {
               assert(problem && typeof problem === "object", "문제 JSON이 객체가 아닙니다.");
               assert(typeof problem.title === "string" && problem.title.trim().length >= 5, "title이 비어있거나 너무 짧습니다.");
@@ -47,6 +51,12 @@ jobs:
               assert(problem.requirements.every((r) => typeof r === "string" && r.trim()), "requirements 안에 빈 항목이 있습니다.");
               assert(typeof problem.hint === "string" && problem.hint.trim().length >= 5, "hint가 비어있거나 너무 짧습니다.");
               assert(typeof problem.referenceSolution === "string" && problem.referenceSolution.trim().length >= 30, "referenceSolution이 비어있거나 너무 짧습니다.");
+
+              // 문제 문구는 반드시 한글
+              assert(hasKorean(problem.title), "title은 반드시 한글이어야 합니다.");
+              assert(hasKorean(problem.description), "description은 반드시 한글이어야 합니다.");
+              assert(problem.requirements.every((r) => hasKorean(r)), "requirements는 모두 한글이어야 합니다.");
+              assert(hasKorean(problem.hint), "hint는 반드시 한글이어야 합니다.");
 
               const textAll = [
                 problem.title,
@@ -122,6 +132,8 @@ jobs:
                 "\"함수를 작성하라\"라고 쓰면 반드시 함수 구현 문제여야 한다.",
                 "실무 상황 기반으로 만들고, 요구사항은 3~4개만 작성한다.",
                 "referenceSolution은 실제로 동작 가능한 정답 코드여야 하며 TODO나 의사코드를 넣지 않는다.",
+                "절대규칙: title, description, requirements, hint는 반드시 한글로 작성한다.",
+                "절대규칙: code와 referenceSolution 안의 프로그래밍 코드는 반드시 영어 식별자를 사용한 일반적인 코드 형태로 작성한다.",
                 "응답 전에 내부적으로 자기검사를 수행하고, 불일치가 있으면 처음부터 다시 작성한다."
               ].join("\n");
 
@@ -142,6 +154,8 @@ jobs:
                 "- code는 복사 후 바로 풀이 가능한 완전한 코드",
                 "- hint는 정답을 직접 노출하지 말고 짧은 방향 제시",
                 "- referenceSolution은 실제 정답 코드",
+                "- title, description, requirements, hint는 반드시 한글",
+                "- code와 referenceSolution의 코드는 영어 식별자 기준으로 작성",
                 "",
                 "잘못된 예시:",
                 '- 설명: "제네릭을 활용해 타입을 만들어 보세요"',
@@ -242,6 +256,8 @@ jobs:
                 "문제가 크게 어긋나면 pass=false로 내리고 issues에 이유를 적는다.",
                 "\"타입을 만들어라\"라고 쓰였는데 정답이 함수 구현이면 반드시 실패 처리한다.",
                 "code에 없는 데이터나 전제를 요구하면 반드시 실패 처리한다.",
+                "절대규칙: title, description, requirements, hint는 반드시 한글이어야 한다. 영어로 나오면 실패 처리한다.",
+                "절대규칙: code와 referenceSolution은 코드 블록으로서 자연스러운 영어 식별자 기반 코드여야 한다.",
                 "반드시 JSON 스키마에 맞춰 응답한다."
               ].join("\n");
 
@@ -259,6 +275,7 @@ jobs:
                 "3. referenceSolution이 실제로 요구사항을 만족하는가",
                 "4. 힌트가 정답을 너무 직접적으로 노출하지 않는가",
                 "5. 난이도와 주제가 자연스러운가",
+                "6. title, description, requirements, hint가 한글인가",
                 "",
                 "문제 JSON:",
                 JSON.stringify(problem)
