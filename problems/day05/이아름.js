@@ -21,8 +21,8 @@ function customPromiseAllSettled(promises) {
           },
           // then의 두번째 인자는 해당 Promise의 reject를 처리
           // catch는 체인 전체에서 발생한 에러를 처리
-          (error) => {
-            result[i] = { status: "rejected", reason: error };
+          (reason) => {
+            result[i] = { status: "rejected", reason };
           },
         )
         .finally(() => {
