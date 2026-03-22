@@ -38,8 +38,8 @@ function customPromiseAll(promises) {
  * @returns {Promise<Array<{status: string, value?: any, reason?: any}>>} 각 Promise의 성공/실패 여부와 결과를 담은 배열
  */
 function customPromiseAllSettled(promises) {
-  return new Promise((resolve, reject) => {
-    if (promises === null || promises === undefined) {
+  return new Promise((resolve) => {
+    if (!Array.isArray(promises)) {
       return resolve([]);
     }
 
