@@ -3,20 +3,33 @@
  * @param {Array<Promise | any>} promises - 실행할 Promise 또는 값의 배열
  * @returns {Promise<Array>} 각 Promise의 실행 결과 배열
  */
-async function customPromiseAll(promises) {
-  if (promises === null || promises === undefined) {
-    return [];
-  }
+function customPromiseAll(promises) {
+  return new Promise((resolve, reject) => {
+    if (promises === null || promises === undefined) {
+      return resolve([]);
+    }
 
-  // 각 promise를 처리해서 Promise 배열을 만든다
-  const promiseResults = promises.map(async (promise) => {
-    return Promise.resolve(promise);
+    let resolveCount = 0;
+    const promiseLength = promises.length;
+    const resolvedValue = new Array(promiseLength);
+
+    if (promiseLength === 0) {
+      return resolve([]);
+    }
+
+    promises.forEach(async (promise, index) => {
+      try {
+        const value = await promise;
+        resolvedValue[index] = value;
+        resolveCount++;
+        if (resolveCount === promiseLength) {
+          resolve(resolvedValue);
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
   });
-
-  // Promise 배열을 전부 기다린다
-  const results = await Promise.all(promiseResults);
-
-  return results;
 }
 
 /**
