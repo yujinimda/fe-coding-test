@@ -32,7 +32,7 @@ function getOrderDetails(order: Order): string {
       return `Order cancelled due to: [${order.reason}].`;
     default:
       const _exhaustiveCheck: never = order;
-      throw new Error(`알 수 없는 주문 상태입니다.`);
+      throw new Error(`알 수 없는 주문 상태: ${status}`);
   }
 }
 
