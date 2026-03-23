@@ -24,8 +24,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const category = Array.isArray(categoryInit) ? categoryInit[0] : categoryInit;
 
   if (category) {
-    if (!CATEGORIES.includes(category)) {
-      return res.status(400).json("존재하지 않는 카테고리입니다.");
+    if (!CATEGORIES.some((c) => c === category)) {
+      return res.status(400).json({ error: "존재하지 않는 카테고리입니다." });
     }
 
     const filter = products.filter((p) => p.category === category);
@@ -43,10 +43,13 @@ export function GET(req: Request) {
   const category = searchParams.get("category");
 
   if (category) {
-    if (!(CATEGORIES as readonly string[]).includes(category)) {
-      return NextResponse.json("존재하지 않는 카테고리입니다.", {
-        status: 400,
-      });
+    if (!CATEGORIES.some((c) => c === category)) {
+      return NextResponse.json(
+        { error: "존재하지 않는 카테고리입니다." },
+        {
+          status: 400,
+        },
+      );
     }
 
     const filter = products.filter((p) => p.category === category);
