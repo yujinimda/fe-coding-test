@@ -41,6 +41,41 @@ jobs:
               return /[가-힣]/.test(String(text || ""));
             }
 
+            /**
+             * code와 referenceSolution의 유사도를 검사한다.
+             * 공백/줄바꿈/주석을 제거한 뒤 비교하여,
+             * code에 정답이 이미 포함되어 있으면 true를 반환한다.
+             */
+            function isSolutionLeaked(code, solution) {
+              function strip(src) {
+                return src
+                  .replace(/\/\/.*$/gm, "")       // 한 줄 주석 제거
+                  .replace(/\/\*[\s\S]*?\*\//g, "") // 블록 주석 제거
+                  .replace(/\s+/g, "")              // 공백 전부 제거
+                  .toLowerCase();
+              }
+
+              const strippedCode = strip(code);
+              const strippedSolution = strip(solution);
+
+              // 정답 코드가 code 안에 그대로 포함되어 있는 경우
+              if (strippedCode.includes(strippedSolution)) return true;
+
+              // 80% 이상 겹치면 사실상 동일
+              const shorter = Math.min(strippedCode.length, strippedSolution.length);
+              const longer = Math.max(strippedCode.length, strippedSolution.length);
+              if (shorter > 0 && shorter / longer > 0.8) {
+                // 문자 단위 일치율 간이 체크
+                let match = 0;
+                for (let i = 0; i < shorter; i++) {
+                  if (strippedCode[i] === strippedSolution[i]) match++;
+                }
+                if (match / shorter > 0.8) return true;
+              }
+
+              return false;
+            }
+
             function validateProblem(problem) {
               assert(problem && typeof problem === "object", "문제 JSON이 객체가 아닙니다.");
               assert(typeof problem.title === "string" && problem.title.trim().length >= 5, "title이 비어있거나 너무 짧습니다.");
@@ -57,6 +92,40 @@ jobs:
               assert(hasKorean(problem.description), "description은 반드시 한글이어야 합니다.");
               assert(problem.requirements.every((r) => hasKorean(r)), "requirements는 모두 한글이어야 합니다.");
               assert(hasKorean(problem.hint), "hint는 반드시 한글이어야 합니다.");
+
+              // code 안의 주석은 한글이어야 한다
+              const codeComments = (problem.code.match(/\/\/\s*(.+)$/gm) || [])
+                .map((c) => c.replace(/^\/\/\s*/, "").trim())
+                .filter((c) => c.length > 0 && !/^[a-zA-Z0-9\s\-_:.,;=<>{}()\[\]@#$%^&*+/\\|`~'"!?]+$/.test(c) === false);
+
+              // 영어로만 된 주석이 하나라도 있으면 실패
+              const englishOnlyComments = (problem.code.match(/\/\/\s*(.+)$/gm) || [])
+                .map((c) => c.replace(/^\/\/\s*/, "").trim())
+                .filter((c) => c.length > 2 && !hasKorean(c) && /[a-zA-Z]/.test(c));
+
+              assert(
+                englishOnlyComments.length === 0,
+                "code 안의 주석은 한글로 작성해야 합니다. 영어 주석 발견: " + englishOnlyComments[0]
+              );
+
+              // code에 TODO 또는 풀이 시작점이 있는지 확인
+              const hasTodoMarker =
+                /\/\/\s*TODO/i.test(problem.code) ||
+                /\/\*\s*TODO/i.test(problem.code) ||
+                /여기에.*작성/i.test(problem.code) ||
+                /구현하세요/i.test(problem.code) ||
+                /작성하세요/i.test(problem.code);
+
+              assert(
+                hasTodoMarker,
+                "code에 풀이 시작점(TODO 주석 또는 '여기에 작성' 등)이 없습니다. code는 스켈레톤이어야 합니다."
+              );
+
+              // code에 정답이 이미 구현되어 있으면 실패
+              assert(
+                !isSolutionLeaked(problem.code, problem.referenceSolution),
+                "code에 정답(referenceSolution)이 이미 포함되어 있습니다. code는 스켈레톤이어야 합니다."
+              );
 
               const textAll = [
                 problem.title,
@@ -131,9 +200,21 @@ jobs:
                 "\"타입을 만들어라\"라고 쓰면 반드시 type/interface/type alias를 직접 정의하는 문제여야 한다.",
                 "\"함수를 작성하라\"라고 쓰면 반드시 함수 구현 문제여야 한다.",
                 "실무 상황 기반으로 만들고, 요구사항은 3~4개만 작성한다.",
-                "referenceSolution은 실제로 동작 가능한 정답 코드여야 하며 TODO나 의사코드를 넣지 않는다.",
+                "",
+                "=== code 필드 규칙 (매우 중요) ===",
+                "code는 풀이자가 직접 채워야 하는 '스켈레톤 코드'다.",
+                "code에는 데이터(배열, 객체, 타입 등)와 함수 시그니처만 제공하고, 핵심 구현부는 비워둔다.",
+                "비워둔 곳에는 반드시 '// TODO: 여기에 구현하세요' 주석을 넣는다.",
+                "code에 정답 로직을 절대 포함하지 않는다. 정답은 오직 referenceSolution에만 넣는다.",
+                "code 안의 주석은 반드시 한글로 작성한다. 영어 주석 금지.",
+                "",
+                "=== referenceSolution 규칙 ===",
+                "referenceSolution은 code의 TODO 부분을 채운 완전한 정답 코드여야 한다.",
+                "실제로 동작 가능한 정답 코드여야 하며 TODO나 의사코드를 넣지 않는다.",
+                "",
                 "절대규칙: title, description, requirements, hint는 반드시 한글로 작성한다.",
-                "절대규칙: code와 referenceSolution 안의 프로그래밍 코드는 반드시 영어 식별자를 사용한 일반적인 코드 형태로 작성한다.",
+                "절대규칙: code와 referenceSolution 안의 변수명, 함수명 등 식별자는 영어로 작성한다.",
+                "절대규칙: code와 referenceSolution 안의 주석은 반드시 한글로 작성한다.",
                 "응답 전에 내부적으로 자기검사를 수행하고, 불일치가 있으면 처음부터 다시 작성한다."
               ].join("\n");
 
@@ -147,15 +228,37 @@ jobs:
                 "",
                 "세부 조건:",
                 "- 실무에서 실제로 마주칠 수 있는 상황 기반 (쇼핑몰, 대시보드, 게시판, 채팅, 관리자 페이지 등)",
-                "- 문제 코드에는 충분한 데이터(배열, 객체 등)를 포함해서 바로 풀 수 있게 할 것",
+                "- code에는 충분한 데이터(배열, 객체 등)와 함수 시그니처를 제공하되, 핵심 구현부는 비워둘 것",
+                "- 비워둔 곳에 '// TODO: 여기에 구현하세요' 주석을 반드시 포함할 것",
+                "- code에 정답 로직을 절대 넣지 말 것. 정답은 referenceSolution에만 넣을 것",
                 "- 요구사항은 반드시 제공된 코드 데이터로만 해결 가능해야 할 것",
                 "- 요구사항끼리 논리적으로 연결되고, 모순이 없어야 할 것",
                 "- description은 2~4문장",
-                "- code는 복사 후 바로 풀이 가능한 완전한 코드",
                 "- hint는 정답을 직접 노출하지 말고 짧은 방향 제시",
-                "- referenceSolution은 실제 정답 코드",
+                "- referenceSolution은 code의 TODO를 채운 완전한 정답 코드",
                 "- title, description, requirements, hint는 반드시 한글",
-                "- code와 referenceSolution의 코드는 영어 식별자 기준으로 작성",
+                "- code와 referenceSolution의 식별자(변수명, 함수명)는 영어, 주석은 한글",
+                "",
+                "좋은 code 예시:",
+                "```",
+                "const orders = [",
+                "  { id: 1, product: 'Laptop', price: 1200, quantity: 2, status: 'delivered' },",
+                "  { id: 2, product: 'Mouse', price: 25, quantity: 5, status: 'pending' },",
+                "];",
+                "",
+                "// TODO: 여기에 구현하세요",
+                "function calculateRevenue(orders) {",
+                "}",
+                "```",
+                "",
+                "나쁜 code 예시 (정답이 이미 들어가 있음 - 이렇게 하면 안 됨):",
+                "```",
+                "function calculateRevenue(orders) {",
+                "  return orders",
+                "    .filter(o => o.status === 'delivered')",
+                "    .reduce((sum, o) => sum + o.price * o.quantity, 0);",
+                "}",
+                "```",
                 "",
                 "잘못된 예시:",
                 '- 설명: "제네릭을 활용해 타입을 만들어 보세요"',
@@ -252,12 +355,25 @@ jobs:
                 "너는 프론트엔드 코딩테스트 문제 검수자다.",
                 "입력된 문제의 제목, 설명, 코드, 요구사항, 힌트, 정답 코드가 서로 일치하는지 엄격하게 검수한다.",
                 "실무 맥락, 요구사항 충족 가능성, 정답의 실행 가능성, 제목-설명-정답의 일치 여부를 본다.",
+                "",
+                "=== code 스켈레톤 검수 (최우선) ===",
+                "code 필드는 반드시 '스켈레톤 코드'여야 한다.",
+                "code에 정답 로직이 이미 구현되어 있으면 반드시 실패(pass=false) 처리한다.",
+                "code에 '// TODO' 또는 '여기에 구현하세요' 같은 풀이 시작점이 없으면 실패 처리한다.",
+                "code와 referenceSolution이 거의 동일하면 반드시 실패 처리한다.",
+                "fixedProblem으로 보정할 때도 code는 반드시 스켈레톤으로 수정해야 한다.",
+                "",
+                "=== 주석 언어 검수 ===",
+                "code와 referenceSolution 안의 주석은 반드시 한글이어야 한다.",
+                "영어로 된 주석(예: '// Component to display user data')이 있으면 실패 처리한다.",
+                "",
                 "사소한 문장 수정으로 해결 가능하면 fixedProblem에 수정본을 넣는다.",
                 "문제가 크게 어긋나면 pass=false로 내리고 issues에 이유를 적는다.",
                 "\"타입을 만들어라\"라고 쓰였는데 정답이 함수 구현이면 반드시 실패 처리한다.",
                 "code에 없는 데이터나 전제를 요구하면 반드시 실패 처리한다.",
                 "절대규칙: title, description, requirements, hint는 반드시 한글이어야 한다. 영어로 나오면 실패 처리한다.",
                 "절대규칙: code와 referenceSolution은 코드 블록으로서 자연스러운 영어 식별자 기반 코드여야 한다.",
+                "절대규칙: code와 referenceSolution 안의 주석은 한글이어야 한다.",
                 "반드시 JSON 스키마에 맞춰 응답한다."
               ].join("\n");
 
@@ -276,6 +392,9 @@ jobs:
                 "4. 힌트가 정답을 너무 직접적으로 노출하지 않는가",
                 "5. 난이도와 주제가 자연스러운가",
                 "6. title, description, requirements, hint가 한글인가",
+                "7. code가 스켈레톤인가 (정답이 이미 구현되어 있으면 실패)",
+                "8. code에 '// TODO' 또는 풀이 시작점이 있는가",
+                "9. code 안의 주석이 한글인가 (영어 주석이면 실패)",
                 "",
                 "문제 JSON:",
                 JSON.stringify(problem)
