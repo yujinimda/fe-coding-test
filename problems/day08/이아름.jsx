@@ -17,23 +17,15 @@ function fetchUserData() {
 // fetchUserData()의 결과를 이용해 사용자 이름과 나이를 렌더링해야 합니다
 // 에러 발생 시 Error를 throw해야 합니다
 const UserData = lazy(() =>
-  fetchUserData()
-    .then((data) => ({
-      default: () => (
-        <div>
-          <h1>User Profile</h1>
-          <p>Name: {data.name}</p>
-          <p>Age: {data.age}</p>
-        </div>
-      ),
-    }))
-    .catch((error) => {
-      return {
-        default: () => {
-          throw new Error(error);
-        },
-      };
-    }),
+  fetchUserData().then((data) => ({
+    default: () => (
+      <div>
+        <h1>User Profile</h1>
+        <p>Name: {data.name}</p>
+        <p>Age: {data.age}</p>
+      </div>
+    ),
+  })),
 );
 // TODO: 에러 바운더리 클래스 컴포넌트를 구현하세요
 // - hasError 상태를 관리해야 합니다
