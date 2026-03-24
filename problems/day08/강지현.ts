@@ -1,13 +1,18 @@
 import React, { Component, Suspense } from "react";
 
+interface User {
+  name: string;
+  age: number;
+}
+
 // 비동기 데이터 페칭을 시뮬레이션하는 함수
-function fetchUserData() {
-  return new Promise((resolve, reject) => {
+function fetchUserData(): Promise<User> {
+  return new Promise<User>((resolve, reject) => {
     setTimeout(() => {
       if (Math.random() > 0.5) {
         resolve({ name: "John Doe", age: 30 });
       } else {
-        reject("Failed to fetch user data");
+        reject(new Error("Failed to fetch user data"));
       }
     }, 1000);
   });
@@ -16,30 +21,23 @@ function fetchUserData() {
 // TODO: React.lazy를 활용하여 사용자 데이터를 표시하는 비동기 컴포넌트를 구현하세요
 // fetchUserData()의 결과를 이용해 사용자 이름과 나이를 렌더링해야 합니다
 // 에러 발생 시 Error를 throw해야 합니다
-const UserData = React.lazy(() => {
-  return fetchUserData().then(
-    data => ({
-      default: () => <div>User: {data.name}, Age: {data.age}</div>
-    }),
-    error => { throw new Error(error); }
-  )
+const UserData = React.lazy(async () => {
+  const data = await fetchUserData();
+  return { default: () => <div>User: {data.name}, Age: {data.age}</div> };
 });
 
 // TODO: 에러 바운더리 클래스 컴포넌트를 구현하세요
 // - hasError 상태를 관리해야 합니다
 // - getDerivedStateFromError로 에러 상태를 업데이트해야 합니다
 // - 에러 발생 시 'Something went wrong while loading user data.' 메시지를 표시해야 합니다
-class ErrorBoundary extends Component<{children: React.ReactNode}> {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error: Error) {
     return { hasError: true };
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught an error', error, errorInfo);
   }
 
