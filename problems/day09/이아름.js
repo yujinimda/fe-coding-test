@@ -11,6 +11,7 @@ class EventEmitter {
     }
 
     this.events[event].push(listener);
+    return this;
   }
 
   // 등록된 이벤트를 찾아서 실행시키는 역할
@@ -26,7 +27,8 @@ class EventEmitter {
   // 특정 이벤트에 등록된 함수를 제거
   off(event, listener) {
     if (!this.events[event]) {
-      return;
+      // this를 반환하면 체이닝이 끊기지 않게 할 수 있음
+      return this;
     }
 
     this.events[event] = this.events[event].filter(
