@@ -24,11 +24,12 @@ class EventEmitter {
    * @returns {void}
    */
   emit(event, ...args) {
-    // 이벤트가 한 번도 등록된 적 없을 때
-    if (!this.events[event]) {
+    const listeners = this.events[event];
+    // 이벤트에 등록된 리스너가 없을 때
+    if (!listeners) {
       return;
     }
-    this.events[event].forEach((callback) => {
+    [...listeners].forEach((callback) => {
       callback(...args);
     });
   }
@@ -47,6 +48,9 @@ class EventEmitter {
     this.events[event] = this.events[event].filter(
       (callback) => callback !== listener,
     );
+    if (this.events[event].length === 0) {
+      delete this.events[event];
+    }
   }
 }
 
