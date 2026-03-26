@@ -1,29 +1,50 @@
-// ## 문제
 
-// 쇼핑몰에서 제품 상세 페이지로 이동할 때, URL의 파라미터로 제품 ID를 받아 해당 제품의 정보를 반환하는 함수를 작성하세요. 이 함수는 Next.js의 동적 라우팅에서 사용됩니다.
+class EventEmitter {
+  constructor() {
+    this.events = {}; // 이벤트를 저장할 객체
+  }
 
-// ## 코드
+  // TODO: 여기에 구현하세요
+  on(event, listener) {
+    if(!this.events[event]){
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+  }
 
-```typescript
-const products = [
-  { id: '1', name: 'Laptop', price: 1500 },
-  { id: '2', name: 'Smartphone', price: 800 },
-  { id: '3', name: 'Tablet', price: 600 }
-];
+  // TODO: 여기에 구현하세요
+  emit(event, ...args) {
+    if(!this.events[event]) return;
 
-// TODO: 여기에 구현하세요
-function getProductById(params) {
+    this.events[event].forEach((listener)=>{
+      listener(...args);
+    })
+  }
 
-  const 상품 = products.find(상품 => 상품.id === params.id)
-  return 상품 || null
-
+  // TODO: 여기에 구현하세요
+  off(event, listener) {
+     if(!this.events[event]) return;
+     // 처음에는 remove로 지웠다;; 배열에서는 못쓴다는걸 기억하자
+     this.events[event] = this.events[event].filter(
+    (storedListener) => storedListener !== listener
+  );
+  }
 }
-```
+
+// 사용 예시
+const emitter = new EventEmitter();
+function onUserLogin(user) {
+  console.log(`${user} has logged in.`);
+}
+emitter.on('login', onUserLogin);
+emitter.emit('login', 'Alice'); // 콘솔에 'Alice has logged in.' 출력
+emitter.off('login', onUserLogin);
+emitter.emit('login', 'Bob'); // 아무것도 출력되지 않음
+
 
 // ## 요구사항
 
-// 1. params 객체에서 id 값을 추출하여 해당하는 제품 정보를 반환해야 합니다.
-// 2. id에 해당하는 제품이 없을 경우 null을 반환해야 합니다.
-// 3. params 객체의 구조는 { id: string } 형태입니다.
-
-
+// 1. 이벤트를 등록하는 on 메서드를 구현하세요. 이 메서드는 이벤트 이름과 리스너 함수를 인자로 받아야 합니다.
+// 2. 이벤트를 발생시키는 emit 메서드를 구현하세요. 이 메서드는 이벤트 이름과 전달할 인자를 받아야 하며, 등록된 모든 리스너를 호출해야 합니다.
+// 3. 이벤트를 제거하는 off 메서드를 구현하세요. 이 메서드는 이벤트 이름과 제거할 리스너 함수를 인자로 받아야 합니다.
+// 4. 등록된 이벤트가 없거나 리스너가 없을 경우에도 오류 없이 동작해야 합니다.
