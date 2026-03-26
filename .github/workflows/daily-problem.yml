@@ -5,6 +5,9 @@ on:
     - cron: "0 16 * * *"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   generate-problem:
     runs-on: ubuntu-latest
@@ -14,10 +17,10 @@ jobs:
 
     steps:
       - name: 레포 체크아웃
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 어제 문제 정답 공개 + 오늘 문제 생성
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
@@ -41,37 +44,49 @@ jobs:
               return /[가-힣]/.test(String(text || ""));
             }
 
+            function getLineComments(code) {
+              return (String(code || "").match(/\/\/\s*(.+)$/gm) || [])
+                .map((c) => c.replace(/^\/\/\s*/, "").trim())
+                .filter(Boolean);
+            }
+
+            function hasEnglishOnlyComments(code) {
+              return getLineComments(code).some(
+                (comment) => comment.length > 2 && !hasKorean(comment) && /[a-zA-Z]/.test(comment)
+              );
+            }
+
+            function hasTodoMarker(code) {
+              return (
+                /\/\/\s*TODO/i.test(code) ||
+                /\/\*\s*TODO/i.test(code) ||
+                /여기에.*구현/i.test(code) ||
+                /여기에.*작성/i.test(code) ||
+                /구현하세요/i.test(code) ||
+                /작성하세요/i.test(code)
+              );
+            }
+
             /**
-             * code와 referenceSolution의 유사도를 검사한다.
-             * 공백/줄바꿈/주석을 제거한 뒤 비교하여,
-             * code에 정답이 이미 포함되어 있으면 true를 반환한다.
+             * 정답 누수 판정은 보수적으로 한다.
+             * 공백/주석 제거 후 완전 동일하거나,
+             * referenceSolution 전체가 code에 그대로 포함될 때만 true.
              */
             function isSolutionLeaked(code, solution) {
               function strip(src) {
-                return src
-                  .replace(/\/\/.*$/gm, "")       // 한 줄 주석 제거
-                  .replace(/\/\*[\s\S]*?\*\//g, "") // 블록 주석 제거
-                  .replace(/\s+/g, "")              // 공백 전부 제거
+                return String(src || "")
+                  .replace(/\/\/.*$/gm, "")
+                  .replace(/\/\*[\s\S]*?\*\//g, "")
+                  .replace(/\s+/g, "")
                   .toLowerCase();
               }
 
               const strippedCode = strip(code);
               const strippedSolution = strip(solution);
 
-              // 정답 코드가 code 안에 그대로 포함되어 있는 경우
+              if (!strippedCode || !strippedSolution) return false;
+              if (strippedCode === strippedSolution) return true;
               if (strippedCode.includes(strippedSolution)) return true;
-
-              // 80% 이상 겹치면 사실상 동일
-              const shorter = Math.min(strippedCode.length, strippedSolution.length);
-              const longer = Math.max(strippedCode.length, strippedSolution.length);
-              if (shorter > 0 && shorter / longer > 0.8) {
-                // 문자 단위 일치율 간이 체크
-                let match = 0;
-                for (let i = 0; i < shorter; i++) {
-                  if (strippedCode[i] === strippedSolution[i]) match++;
-                }
-                if (match / shorter > 0.8) return true;
-              }
 
               return false;
             }
@@ -87,41 +102,26 @@ jobs:
               assert(typeof problem.hint === "string" && problem.hint.trim().length >= 5, "hint가 비어있거나 너무 짧습니다.");
               assert(typeof problem.referenceSolution === "string" && problem.referenceSolution.trim().length >= 30, "referenceSolution이 비어있거나 너무 짧습니다.");
 
-              // 문제 문구는 반드시 한글
               assert(hasKorean(problem.title), "title은 반드시 한글이어야 합니다.");
               assert(hasKorean(problem.description), "description은 반드시 한글이어야 합니다.");
               assert(problem.requirements.every((r) => hasKorean(r)), "requirements는 모두 한글이어야 합니다.");
               assert(hasKorean(problem.hint), "hint는 반드시 한글이어야 합니다.");
 
-              // code 안의 주석은 한글이어야 한다
-              const codeComments = (problem.code.match(/\/\/\s*(.+)$/gm) || [])
-                .map((c) => c.replace(/^\/\/\s*/, "").trim())
-                .filter((c) => c.length > 0 && !/^[a-zA-Z0-9\s\-_:.,;=<>{}()\[\]@#$%^&*+/\\|`~'"!?]+$/.test(c) === false);
-
-              // 영어로만 된 주석이 하나라도 있으면 실패
-              const englishOnlyComments = (problem.code.match(/\/\/\s*(.+)$/gm) || [])
-                .map((c) => c.replace(/^\/\/\s*/, "").trim())
-                .filter((c) => c.length > 2 && !hasKorean(c) && /[a-zA-Z]/.test(c));
-
               assert(
-                englishOnlyComments.length === 0,
-                "code 안의 주석은 한글로 작성해야 합니다. 영어 주석 발견: " + englishOnlyComments[0]
+                !hasEnglishOnlyComments(problem.code),
+                "code 안의 주석은 한글로 작성해야 합니다."
               );
 
-              // code에 TODO 또는 풀이 시작점이 있는지 확인
-              const hasTodoMarker =
-                /\/\/\s*TODO/i.test(problem.code) ||
-                /\/\*\s*TODO/i.test(problem.code) ||
-                /여기에.*작성/i.test(problem.code) ||
-                /구현하세요/i.test(problem.code) ||
-                /작성하세요/i.test(problem.code);
-
               assert(
-                hasTodoMarker,
-                "code에 풀이 시작점(TODO 주석 또는 '여기에 작성' 등)이 없습니다. code는 스켈레톤이어야 합니다."
+                !hasEnglishOnlyComments(problem.referenceSolution),
+                "referenceSolution 안의 주석은 한글로 작성해야 합니다."
               );
 
-              // code에 정답이 이미 구현되어 있으면 실패
+              assert(
+                hasTodoMarker(problem.code),
+                "code에 풀이 시작점(TODO 주석 또는 '여기에 구현하세요' 등)이 없습니다. code는 스켈레톤이어야 합니다."
+              );
+
               assert(
                 !isSolutionLeaked(problem.code, problem.referenceSolution),
                 "code에 정답(referenceSolution)이 이미 포함되어 있습니다. code는 스켈레톤이어야 합니다."
@@ -176,7 +176,7 @@ jobs:
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  "Authorization": "Bearer " + process.env.OPENAI_API_KEY,
+                  Authorization: "Bearer " + process.env.OPENAI_API_KEY,
                 },
                 body: JSON.stringify(body),
               });
@@ -202,8 +202,8 @@ jobs:
                 "실무 상황 기반으로 만들고, 요구사항은 3~4개만 작성한다.",
                 "",
                 "=== code 필드 규칙 (매우 중요) ===",
-                "code는 풀이자가 직접 채워야 하는 '스켈레톤 코드'다.",
-                "code에는 데이터(배열, 객체, 타입 등)와 함수 시그니처만 제공하고, 핵심 구현부는 비워둔다.",
+                "code는 풀이자가 직접 채워야 하는 스켈레톤 코드다.",
+                "code에는 데이터와 함수 시그니처만 제공하고, 핵심 구현부는 비워둔다.",
                 "비워둔 곳에는 반드시 '// TODO: 여기에 구현하세요' 주석을 넣는다.",
                 "code에 정답 로직을 절대 포함하지 않는다. 정답은 오직 referenceSolution에만 넣는다.",
                 "code 안의 주석은 반드시 한글로 작성한다. 영어 주석 금지.",
@@ -305,8 +305,70 @@ jobs:
               const content = data?.choices?.[0]?.message?.content;
               assert(content, "생성 응답 content가 비어 있습니다.");
 
-              const parsed = JSON.parse(content);
-              return validateProblem(parsed);
+              return JSON.parse(content);
+            }
+
+            async function repairLeakedProblem(problem) {
+              const repairSchema = {
+                name: "repair_problem",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    code: { type: "string" },
+                    requirements: {
+                      type: "array",
+                      minItems: 3,
+                      maxItems: 4,
+                      items: { type: "string" }
+                    },
+                    hint: { type: "string" },
+                    referenceSolution: { type: "string" }
+                  },
+                  required: ["title", "description", "code", "requirements", "hint", "referenceSolution"]
+                }
+              };
+
+              const developerPrompt = [
+                "너는 프론트엔드 코딩테스트 문제 보정기다.",
+                "입력된 문제에서 title, description, requirements, hint, referenceSolution은 유지한다.",
+                "오직 code만 스켈레톤 코드로 다시 작성한다.",
+                "code에는 데이터와 함수 시그니처만 남기고 핵심 구현은 제거한다.",
+                "비워둔 곳에는 반드시 '// TODO: 여기에 구현하세요'를 넣는다.",
+                "code에 정답 로직을 절대 넣지 않는다.",
+                "code 안의 주석은 반드시 한글로 작성한다.",
+                "식별자는 영어로 유지한다.",
+                "반드시 JSON 스키마에 맞춘 전체 문제 객체를 반환한다."
+              ].join("\n");
+
+              const userPrompt = [
+                "다음 문제의 code가 정답을 너무 많이 포함하고 있거나 스켈레톤이 아닙니다.",
+                "title, description, requirements, hint, referenceSolution은 최대한 유지하고 code만 스켈레톤으로 다시 작성하세요.",
+                "",
+                "문제 JSON:",
+                JSON.stringify(problem)
+              ].join("\n");
+
+              const data = await createChatCompletion({
+                model: "gpt-4o",
+                temperature: 0,
+                response_format: {
+                  type: "json_schema",
+                  json_schema: repairSchema
+                },
+                messages: [
+                  { role: "developer", content: developerPrompt },
+                  { role: "user", content: userPrompt }
+                ]
+              });
+
+              const content = data?.choices?.[0]?.message?.content;
+              assert(content, "보정 응답 content가 비어 있습니다.");
+
+              return JSON.parse(content);
             }
 
             async function reviewProblem(problem, { cat, topic, diff, timeLimit }) {
@@ -357,23 +419,21 @@ jobs:
                 "실무 맥락, 요구사항 충족 가능성, 정답의 실행 가능성, 제목-설명-정답의 일치 여부를 본다.",
                 "",
                 "=== code 스켈레톤 검수 (최우선) ===",
-                "code 필드는 반드시 '스켈레톤 코드'여야 한다.",
+                "code 필드는 반드시 스켈레톤 코드여야 한다.",
                 "code에 정답 로직이 이미 구현되어 있으면 반드시 실패(pass=false) 처리한다.",
                 "code에 '// TODO' 또는 '여기에 구현하세요' 같은 풀이 시작점이 없으면 실패 처리한다.",
-                "code와 referenceSolution이 거의 동일하면 반드시 실패 처리한다.",
                 "fixedProblem으로 보정할 때도 code는 반드시 스켈레톤으로 수정해야 한다.",
                 "",
                 "=== 주석 언어 검수 ===",
                 "code와 referenceSolution 안의 주석은 반드시 한글이어야 한다.",
-                "영어로 된 주석(예: '// Component to display user data')이 있으면 실패 처리한다.",
+                "영어 주석이 있으면 실패 처리한다.",
                 "",
                 "사소한 문장 수정으로 해결 가능하면 fixedProblem에 수정본을 넣는다.",
                 "문제가 크게 어긋나면 pass=false로 내리고 issues에 이유를 적는다.",
                 "\"타입을 만들어라\"라고 쓰였는데 정답이 함수 구현이면 반드시 실패 처리한다.",
                 "code에 없는 데이터나 전제를 요구하면 반드시 실패 처리한다.",
-                "절대규칙: title, description, requirements, hint는 반드시 한글이어야 한다. 영어로 나오면 실패 처리한다.",
-                "절대규칙: code와 referenceSolution은 코드 블록으로서 자연스러운 영어 식별자 기반 코드여야 한다.",
-                "절대규칙: code와 referenceSolution 안의 주석은 한글이어야 한다.",
+                "절대규칙: title, description, requirements, hint는 반드시 한글이어야 한다.",
+                "절대규칙: code와 referenceSolution의 식별자는 영어 기반이어야 한다.",
                 "반드시 JSON 스키마에 맞춰 응답한다."
               ].join("\n");
 
@@ -392,9 +452,9 @@ jobs:
                 "4. 힌트가 정답을 너무 직접적으로 노출하지 않는가",
                 "5. 난이도와 주제가 자연스러운가",
                 "6. title, description, requirements, hint가 한글인가",
-                "7. code가 스켈레톤인가 (정답이 이미 구현되어 있으면 실패)",
-                "8. code에 '// TODO' 또는 풀이 시작점이 있는가",
-                "9. code 안의 주석이 한글인가 (영어 주석이면 실패)",
+                "7. code가 스켈레톤인가",
+                "8. code에 TODO 또는 풀이 시작점이 있는가",
+                "9. code와 referenceSolution의 주석이 한글인가",
                 "",
                 "문제 JSON:",
                 JSON.stringify(problem)
@@ -420,10 +480,6 @@ jobs:
               assert(typeof review.pass === "boolean", "검수 결과의 pass가 없습니다.");
               assert(typeof review.score === "number", "검수 결과의 score가 없습니다.");
               assert(Array.isArray(review.issues), "검수 결과의 issues가 배열이 아닙니다.");
-
-              if (review.fixedProblem) {
-                review.fixedProblem = validateProblem(review.fixedProblem);
-              }
 
               return review;
             }
@@ -583,36 +639,56 @@ jobs:
             const dayStr = String(dayNum).padStart(2, "0");
 
             // ============================
-            // 3. 생성 + 검수 (최대 3회 시도)
+            // 3. 생성 + 보정 + 검수
             // ============================
             let finalProblem = null;
             let lastReview = null;
+            let lastError = null;
 
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              console.log("문제 생성 시도 #" + attempt);
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              try {
+                console.log("문제 생성 시도 #" + attempt);
 
-              const generated = await generateProblem({ cat, topic, diff, timeLimit });
-              const review = await reviewProblem(generated, { cat, topic, diff, timeLimit });
+                let generated = await generateProblem({ cat, topic, diff, timeLimit });
 
-              lastReview = review;
+                if (!hasTodoMarker(generated.code) || isSolutionLeaked(generated.code, generated.referenceSolution)) {
+                  console.log("스켈레톤 보정 실행");
+                  generated = await repairLeakedProblem(generated);
+                }
 
-              console.log("검수 점수:", review.score);
-              console.log("검수 이슈:", review.issues.join(" | ") || "없음");
+                generated = validateProblem(generated);
 
-              if (review.pass) {
-                finalProblem = review.fixedProblem || generated;
-                console.log("검수 통과");
-                break;
-              }
+                const review = await reviewProblem(generated, { cat, topic, diff, timeLimit });
+                lastReview = review;
 
-              if (!review.pass && review.fixedProblem && review.score >= 85) {
-                finalProblem = review.fixedProblem;
-                console.log("검수 보정본 채택");
-                break;
+                console.log("검수 점수:", review.score);
+                console.log("검수 이슈:", review.issues.join(" | ") || "없음");
+
+                if (review.pass) {
+                  const candidate = review.fixedProblem ? validateProblem(review.fixedProblem) : generated;
+                  finalProblem = candidate;
+                  console.log("검수 통과");
+                  break;
+                }
+
+                if (review.fixedProblem && review.score >= 85) {
+                  finalProblem = validateProblem(review.fixedProblem);
+                  console.log("검수 보정본 채택");
+                  break;
+                }
+              } catch (error) {
+                lastError = error;
+                console.log("시도 실패:", error.message);
               }
             }
 
-            assert(finalProblem, "검수 통과 문제를 만들지 못했습니다. 마지막 이슈: " + JSON.stringify(lastReview?.issues || []));
+            assert(
+              finalProblem,
+              "검수 통과 문제를 만들지 못했습니다. 마지막 오류: "
+                + (lastError?.message || "없음")
+                + " / 마지막 이슈: "
+                + JSON.stringify(lastReview?.issues || [])
+            );
 
             const problem = finalProblem;
             const diffBadge = diff === "Easy" ? "🟢 Easy" : "🟡 Medium";
