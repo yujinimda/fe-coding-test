@@ -27,10 +27,10 @@ function deepClone(obj) {
   // 배열인지 객체인지 확인 후 초기값 설정
   const clone = Array.isArray(obj) ? [] : {};
 
-  for (const key in obj) {
+  Object.keys(obj).forEach((key) => {
     // 값이 객체일 수 있기 때문에, 재귀 호출
     clone[key] = deepClone(obj[key]);
-  }
+  });
 
   return clone;
 }
