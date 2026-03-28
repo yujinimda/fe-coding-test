@@ -7,10 +7,8 @@ const user = {
 function authMiddleware(req, res, next) {
   const target = req.url;
 
-  if (target === "/mypage") {
-    if (!user.isAuthenticated) {
-      res.redirect("/login");
-    }
+  if (target === "/mypage" && !user.isAuthenticated) {
+    return res.redirect("/login"); 
   }
 
   next();
