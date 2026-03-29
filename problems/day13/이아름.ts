@@ -8,11 +8,53 @@ interface Order {
   status: OrderStatus;
 }
 
-const orders: Order[] = [
-  { id: 1, product: "Laptop", price: 1200, quantity: 2, status: "delivered" },
-  { id: 2, product: "Mouse", price: 25, quantity: 5, status: "pending" },
-  { id: 3, product: "Keyboard", price: 75, quantity: 3, status: "shipped" },
+const orders: (PendingOrder | ShippedOrder | DeliveredOrder)[] = [
+  {
+    id: 1,
+    product: "Laptop",
+    price: 1200,
+    quantity: 2,
+    status: "delivered",
+    delivery: new Date(),
+  },
+  {
+    id: 2,
+    product: "Mouse",
+    price: 25,
+    quantity: 5,
+    status: "pending",
+    pendding: 3,
+  },
+  {
+    id: 3,
+    product: "Keyboard",
+    price: 75,
+    quantity: 3,
+    status: "shipped",
+    shipped: "CJ-12345",
+  },
 ];
+
+interface PendingOrder extends Order {
+  status: "pending";
+  pendding: number; // pending일 때만 있는 속성
+}
+
+interface ShippedOrder extends Order {
+  status: "shipped";
+  shipped: string; // shipped일 때만 있는 속성
+}
+
+interface DeliveredOrder extends Order {
+  status: "delivered";
+  delivery: Date; // delivered일 때만 있는 속성
+}
+
+type OrderDetailsMap = {
+  pending: PendingOrder;
+  shipped: ShippedOrder;
+  delivered: DeliveredOrder;
+};
 
 // Mapped Type을 활용한 정의
 // Mapped Type은 타입 전용 for ... in 루프
@@ -20,7 +62,7 @@ const orders: Order[] = [
 // { [ K in T ] : Type }
 // T > 내가 순회하고 싶은 키들의 목록, K > 루프를 돌 때 선택된 하나의 키, Type > 각 키에 부여하고 싶은 값의 타입
 type OrderDetails<T extends OrderStatus> = {
-  [K in T]: Order;
+  [K in T]: OrderDetailsMap[K];
 }[T]; // 그 중 T 키의 밸류(Order)만 추출
 
 function getOrderDetails<T extends OrderStatus>(
