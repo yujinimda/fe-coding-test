@@ -15,7 +15,7 @@ const orders: Order[] = [
 ];
 
 type OrderDetails<T extends OrderStatus> = {
-  pending: Pick<Order, "id" | "product" | "price" | "quantity">;
+  pending: Omit<Order, "status">;
   shipped: Pick<Order, "id" | "product"> & { trackingNumber: string };
   delivered: Pick<Order, "id" | "product"> & { deliveredAt: string };
 }[T];
@@ -28,13 +28,10 @@ function getOrderDetails<T extends OrderStatus>(
     .filter((order) => order.status === status)
     .map((order) => {
       // status에 따라 다른 속성 반환
-      if (status === "pending")
-        return {
-          id: order.id,
-          product: order.product,
-          price: order.price,
-          quantity: order.quantity,
-        } as OrderDetails<T>;
+      if (status === "pending") {
+        const { status: _, ...rest } = order;
+        return rest as OrderDetails<T>;
+      }
       if (status === "shipped")
         return {
           id: order.id,
@@ -44,7 +41,16 @@ function getOrderDetails<T extends OrderStatus>(
       return {
         id: order.id,
         product: order.product,
-        deliveredAt: "SEOUL",
+        deliveredAt: new Date().toISOString(),
       } as OrderDetails<T>;
     });
 }
+
+// pending 주문 조회
+console.log(getOrderDetails(orders, "pending"));
+
+// shipped 주문 조회
+console.log(getOrderDetails(orders, "shipped"));
+
+// delivered 주문 조회
+console.log(getOrderDetails(orders, "delivered"));
