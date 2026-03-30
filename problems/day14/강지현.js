@@ -34,9 +34,7 @@ function countCommentsByAuthor(comments, author) {
     }
 
     // 하위 자식이 있을 경우, 자식의 댓글 확인
-    if (comment.children.length > 0) {
-      count += countCommentsByAuthor(comment.children, author);
-    }
+    count += countCommentsByAuthor(comment.children, author);
   }
 
   return count;
