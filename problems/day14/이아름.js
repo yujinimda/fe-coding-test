@@ -23,9 +23,7 @@ const comments = [
 function countCommentsByAuthor(comments, author) {
   let count = 0;
 
-  for (let i = 0; i < comments.length; i++) {
-    const comment = comments[i];
-
+  for (const comment of comments) {
     if (comment.author === author) {
       count++;
     }
@@ -43,17 +41,16 @@ console.log(countCommentsByAuthor(comments, "Alice")); // 4
 
 // DFS(깊이 우선 탐색) 방식
 // 재귀가 내부적으로 사용하는 스택을 직접 배열로 만들어서 관리
-function countCommentsByAuthorDFS(comments, targetAuthor) {
+function countCommentsByAuthorDFS(comments, author) {
   let count = 0;
   // 탐색해야 할 노드들을 담은 스택 (초기값은 전체 댓글 배열)
   const stack = [...comments];
-  console.log(stack);
 
   while (stack.length > 0) {
     const current = stack.pop();
     console.log(current);
 
-    if (current.author === targetAuthor) {
+    if (current.author === author) {
       count++;
     }
 
