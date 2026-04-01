@@ -22,8 +22,8 @@ type ProductType = {
 }
 
 // TODO: 여기에 구현하세요
-function generateProductMetadata(product: ProductType) {
- return {
+function generateProductMetadata(product: ProductType): { title: string; description: string } {
+  return {
     title: product.name,
     description: product.description,
   };
