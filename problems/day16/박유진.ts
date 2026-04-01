@@ -15,11 +15,11 @@ const product = {
 };
 
 type ProductType = {
-  id: number,
-  name: string,
-  description: string,
-  price: number
-}
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+};
 
 // TODO: 여기에 구현하세요
 function generateProductMetadata(product: ProductType): { title: string; description: string } {
