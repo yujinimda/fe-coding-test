@@ -189,7 +189,7 @@ jobs:
               return res.json();
             }
 
-            async function generateProblem({ cat, topic, diff, timeLimit }) {
+            async function generateProblem({ cat, topic, diff, timeLimit, existingTitles }) {
               const developerPrompt = [
                 "너는 프론트엔드 코딩테스트 문제 출제기다.",
                 "반드시 JSON 스키마에 맞는 값만 반환한다.",
@@ -218,7 +218,7 @@ jobs:
                 "응답 전에 내부적으로 자기검사를 수행하고, 불일치가 있으면 처음부터 다시 작성한다."
               ].join("\n");
 
-              const userPrompt = [
+              const userLines = [
                 "프론트엔드 코딩테스트 문제를 하나 만들어줘.",
                 "",
                 "카테고리: " + cat.emoji + " " + cat.label,
@@ -264,7 +264,18 @@ jobs:
                 '- 설명: "제네릭을 활용해 타입을 만들어 보세요"',
                 "- 실제 정답: 제네릭 함수만 구현",
                 "- 이런 불일치는 절대 허용하지 마라."
-              ].join("\n");
+              ];
+
+              // 기출 문제 목록을 프롬프트에 추가하여 중복 방지
+              if (existingTitles && existingTitles.length > 0) {
+                userLines.push("");
+                userLines.push("=== 이미 출제된 문제 (중복 금지) ===");
+                existingTitles.forEach((t) => userLines.push("- " + t));
+                userLines.push("");
+                userLines.push("위 목록과 같거나 유사한 문제를 절대 만들지 마라. 완전히 새로운 시나리오와 데이터를 사용해라.");
+              }
+
+              const userPrompt = userLines.join("\n");
 
               const schema = {
                 name: "daily_problem",
@@ -622,11 +633,10 @@ jobs:
             ];
 
             const difficulties = ["Easy", "Medium"];
-            const cat = categories[Math.floor(Math.random() * categories.length)];
-            const topic = cat.topics[Math.floor(Math.random() * cat.topics.length)];
-            const diff = difficulties[Math.floor(Math.random() * difficulties.length)];
-            const timeLimit = cat.id === "algorithm" ? "20분" : "15분";
 
+            // ============================
+            // 2-1. 기존 이슈에서 사용된 토픽 수집
+            // ============================
             const existingIssues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -635,8 +645,56 @@ jobs:
               per_page: 100,
             });
 
+            const usedTopics = new Set();
+            const existingTitles = [];
+
+            for (const issue of existingIssues.data) {
+              const body = issue.body || "";
+              // <!--TOPIC:cat_id:topic_text--> 메타에서 파싱
+              const topicMatch = body.match(/<!--TOPIC:([\w-]+):(.+?)-->/);
+              if (topicMatch) {
+                usedTopics.add(topicMatch[1] + ":" + topicMatch[2].trim());
+              }
+              // 메타 없는 기존 이슈도 제목 수집 (GPT 프롬프트 전달용)
+              existingTitles.push(issue.title);
+            }
+
+            console.log("기존 이슈 수: " + existingIssues.data.length);
+            console.log("사용된 토픽 수: " + usedTopics.size);
+
+            // ============================
+            // 2-2. 미사용 토픽에서 랜덤 선택
+            // ============================
+            const availableCategories = categories
+              .map((c) => ({
+                ...c,
+                remainingTopics: c.topics.filter(
+                  (t) => !usedTopics.has(c.id + ":" + t)
+                ),
+              }))
+              .filter((c) => c.remainingTopics.length > 0);
+
+            // 모든 토픽 소진 시 전체 리셋
+            const pool = availableCategories.length > 0
+              ? availableCategories
+              : categories.map((c) => ({ ...c, remainingTopics: [...c.topics] }));
+
+            if (availableCategories.length === 0) {
+              console.log("모든 토픽이 소진되어 전체 리셋합니다.");
+            } else {
+              const remaining = pool.reduce((sum, c) => sum + c.remainingTopics.length, 0);
+              console.log("남은 토픽 수: " + remaining);
+            }
+
+            const cat = pool[Math.floor(Math.random() * pool.length)];
+            const topic = cat.remainingTopics[Math.floor(Math.random() * cat.remainingTopics.length)];
+            const diff = difficulties[Math.floor(Math.random() * difficulties.length)];
+            const timeLimit = cat.id === "algorithm" ? "20분" : "15분";
+
             const dayNum = existingIssues.data.length + 1;
             const dayStr = String(dayNum).padStart(2, "0");
+
+            console.log("선택된 카테고리: " + cat.label + " / 토픽: " + topic + " / 난이도: " + diff);
 
             // ============================
             // 3. 생성 + 보정 + 검수
@@ -649,7 +707,7 @@ jobs:
               try {
                 console.log("문제 생성 시도 #" + attempt);
 
-                let generated = await generateProblem({ cat, topic, diff, timeLimit });
+                let generated = await generateProblem({ cat, topic, diff, timeLimit, existingTitles });
 
                 if (!hasTodoMarker(generated.code) || isSolutionLeaked(generated.code, generated.referenceSolution)) {
                   console.log("스켈레톤 보정 실행");
@@ -750,7 +808,8 @@ jobs:
               + "> 풀이는 PR로 제출해주세요! 정답은 **다음 날 자정**에 댓글로 공개됩니다.\n\n"
               + "<!--SOLUTION\n"
               + problem.referenceSolution + "\n"
-              + "-->";
+              + "-->\n"
+              + "<!--TOPIC:" + cat.id + ":" + topic + "-->";
 
             await github.rest.issues.create({
               owner: context.repo.owner,
