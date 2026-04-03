@@ -13,12 +13,21 @@ const categories = [
 function TabComponent() {
   const [activeTab, setActiveTab] = useState(categories[0].id);
 
+  const activeCategory = categories.find(
+    (category) => category.id === activeTab,
+  );
+
   return (
     <div>
       {/* 탭 버튼들 */}
       <div>
         {categories.map((category) => (
-          <button key={category.id} onClick={() => setActiveTab(category.id)}>
+          <button
+            key={category.id}
+            onClick={() => setActiveTab(category.id)}
+            role="tab"
+            aria-selected={activeTab === category.id}
+          >
             {category.name}
           </button>
         ))}
@@ -26,11 +35,9 @@ function TabComponent() {
 
       {/* 선택된 탭의 상품 목록 */}
       <ul>
-        {categories
-          .find((category) => category.id === activeTab)
-          ?.products.map((product) => (
-            <li key={product}>{product}</li>
-          ))}
+        {activeCategory?.products.map((product) => (
+          <li key={product}>{product}</li>
+        ))}
       </ul>
     </div>
   );
