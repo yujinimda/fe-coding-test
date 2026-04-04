@@ -9,8 +9,8 @@ const orders = [
 // TODO: 여기에 구현하세요
 function calculateTotalDeliveredRevenue(orders) {
   const delivered = orders.filter((o) => o.status === "delivered");
-  return delivered.reduce((acc, curr) => acc + curr.price, 0);
+  return delivered.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
 }
 
 const result = calculateTotalDeliveredRevenue(orders);
-console.log(result); // 1575
+console.log(result); // 2925
