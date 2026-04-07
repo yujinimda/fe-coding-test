@@ -19,17 +19,11 @@ const users = [
  */
 function sortUsers(users) {
   return [...users].sort((a, b) => {
-    const nameCompare = a.name.localeCompare(b.name);
-    if (nameCompare !== 0) {
-      return nameCompare;
-    }
-
-    const ageCompare = a.age - b.age;
-    if (ageCompare !== 0) {
-      return ageCompare;
-    }
-
-    return new Date(b.joined).getTime() - new Date(a.joined).getTime();
+    return (
+      a.name.localeCompare(b.name) ||
+      a.age - b.age ||
+      b.joined.localeCompare(a.joined)
+    );
   });
 }
 
