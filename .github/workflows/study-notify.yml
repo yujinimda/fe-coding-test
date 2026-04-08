@@ -1,0 +1,18 @@
+name: 모각스 스터디 참여 확인 알림
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # KST 17:00 (UTC+9)
+  workflow_dispatch:       # 수동 테스트용
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord 알림 발송
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{
+                 "content": "📢 **내일 스터디 참여 확인**\n\n다음 날 스터디 참여 가능 여부를 댓글로 남겨주세요!\n\n✅ 온라인 참여 가능합니다 (오전/오후 __시 ~ __시)\n✅ 오프라인 참여 가능합니다 (__시 ~ __시)\n\n오프라인으로 모이시는 분들은 댓글 보고 시간 맞춰서 진행해요! 🙌"
+               }' \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}
