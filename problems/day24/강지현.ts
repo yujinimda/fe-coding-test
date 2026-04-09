@@ -26,20 +26,25 @@ function handleEvent(event: ButtonEvent) {
   const { type, payload } = event;
   switch (type) {
     case "addProduct":
-      products.push({ id: products.length + 1, ...payload });
+      products.push({
+        id: Math.max(0, ...products.map((p) => p.id)) + 1,
+        ...payload,
+      });
       console.log(`상품 추가: ${payload.name}, 가격: ${payload.price}`);
       break;
     case "deleteProduct":
       const idx = products.findIndex((p) => p.id === payload.id);
-      products.splice(idx, 1);
-      console.log(`상품 제거: ${payload.id}`);
+      if (idx !== -1) {
+        products.splice(idx, 1);
+        console.log(`상품 제거: ${payload.id}`);
+      }
       break;
     case "updateProduct":
       const product = products.find((p) => p.id === payload.id);
       if (product) {
         product.price = payload.price;
+        console.log(`상품 업데이트: ${payload.id}, 가격: ${payload.price}`);
       }
-      console.log(`상품 업데이트: ${payload.id}, 가격: ${payload.price}`);
       break;
   }
 }
