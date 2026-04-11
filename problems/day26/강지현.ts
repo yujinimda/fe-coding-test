@@ -12,7 +12,7 @@ const productData: ProductData = {
   available: true,
 };
 
-function fetchProductData(productId: number) {
+function fetchProductData(productId: number): ProductData {
   // 이 함수는 실제로는 비동기 API 호출을 통해 데이터를 가져온다고 가정합니다.
   // 여기서는 간단히 데이터를 반환합니다.
   if (productId === 101) {
@@ -30,12 +30,10 @@ function renderProductPage(productId: number) {
     const product = fetchProductData(productId);
     console.log(`제품명: ${product.name}, 가격: ${product.price}`);
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "Product not found") {
-        console.error("제품을 찾을 수 없습니다.");
-      } else {
-        console.error("알 수 없는 에러가 발생했습니다.");
-      }
+    if (error instanceof Error && error.message === "Product not found") {
+      console.error("제품을 찾을 수 없습니다.");
+    } else {
+      console.error("알 수 없는 에러가 발생했습니다.");
     }
   }
 }
