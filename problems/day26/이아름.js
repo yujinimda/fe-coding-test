@@ -31,5 +31,5 @@ function renderProductPage(productId) {
   }
 }
 
-console.log(renderProductPage(101));
-console.log(renderProductPage(404));
+renderProductPage(101);
+renderProductPage(404);
