@@ -26,23 +26,19 @@ const menuTree = [
  * @returns {boolean} 메뉴의 활성화 상태
  */
 function isMenuActive(menuTree, menuId) {
-  for (const menu of menuTree) {
-    // 1. 현재 메뉴 ID가 일치하면 → active 반환
-    if (menu.id === menuId) {
-      return menu.active;
-    }
-
-    // 2. children이 있으면 → 재귀 호출
-    if (menu.children.length > 0) {
-      const result = isMenuActive(menu.children, menuId);
-      // result가 있으면 → 반환
-      if (result !== false) {
-        return result;
+  const find = (nodes) => {
+    for (const menu of nodes) {
+      if (menu.id === menuId) return menu.active;
+      if (menu.children && menu.children.length > 0) {
+        const result = find(menu.children);
+        if (result !== undefined) return result;
       }
     }
-  }
-  // 3. 못 찾으면 → false 반환
-  return false;
+    return undefined;
+  };
+
+  const result = find(menuTree);
+  return result ?? false;
 }
 
 // TEST
