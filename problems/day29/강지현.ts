@@ -3,7 +3,7 @@ interface Order {
   product: string;
   price: number;
   quantity: number;
-  status: string;
+  status: "delivered" | "pending" | "cancelled";
 }
 
 const orderList: Order[] = [
@@ -14,9 +14,11 @@ const orderList: Order[] = [
 ];
 
 function calculateDeliveredOrdersTotal(orders: Order[]): number {
-  return orders
-    .filter((order) => order.status === "delivered")
-    .reduce((acc, order) => acc + order.price * order.quantity, 0);
+  return orders.reduce(
+    (acc, order) =>
+      order.status === "delivered" ? acc + order.price * order.quantity : acc,
+    0,
+  );
 }
 
 // TEST
