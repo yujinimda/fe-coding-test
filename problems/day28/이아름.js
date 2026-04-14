@@ -23,7 +23,7 @@ function isMenuActive(menuTree, menuId) {
   // 재귀로 풀이하기 > 함수를 함수 내부에서 호출하기
   // 해당하는 menuId의 active 여부를 표시해야함
 
-  for (menu of menuTree) {
+  for (const menu of menuTree) {
     if (menu.id === menuId) {
       return menu.active;
     }
