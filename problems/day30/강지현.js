@@ -3,9 +3,9 @@ const productManager = {
     { id: 1, name: "Laptop", price: 1200 },
     { id: 2, name: "Mouse", price: 25 },
   ],
-  printProductDetails: function () {
+  printProductDetails() {
     this.products.forEach((product) => {
-      console.log(`Product: ${product.name}, Price: ${product.price}`);
+      console.log("Product: " + product.name + ", Price: " + product.price);
     });
   },
 };
