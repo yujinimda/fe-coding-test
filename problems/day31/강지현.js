@@ -12,28 +12,30 @@ const discounts = [
 
 /**
  * 제품 ID를 기반으로 할인된 가격을 계산
- * * @param {number} productId - 계산할 제품의 고유 ID
- * @param {Object.<number, number>} [memo={}] - 이미 계산된 결과를 저장하는 메모 객체 (기본값: 빈 객체)
- * @returns {number} 할인율이 적용된 최종 가격 (할인 정보가 없으면 원가 반환)
+ * @param {number} productId - 계산할 제품의 고유 ID
+ * @param {Object.<number, number>} [memo={}] - 이미 계산된 결과를 저장하는 메모 객체
+ * @param {number} [index=0] - 현재 탐색 중인 제품 배열의 인덱스
+ * @returns {number} 할인율이 적용된 최종 가격
  */
-function calculateDiscountedPrice(productId, memo = {}) {
+function calculateDiscountedPrice(productId, memo = {}, index = 0) {
   // 1. 메모리에 이미 있는지 확인 (탈출 조건)
   if (productId in memo) return memo[productId];
 
-  // 2. 제품 찾기 (find 사용)
-  const product = products.find((p) => p.id === productId);
-  if (!product) return 0; // 제품이 없으면 0이나 에러 처리
+  // 2. 재귀 탈출 조건: 모든 제품을 확인한 경우
+  if (index >= products.length) return 0;
 
-  // 3. 할인율 찾기
-  const discountInfo = discounts.find((d) => d.productId === productId);
-  const rate = discountInfo ? discountInfo.discount : 0;
+  // 3. 현재 인덱스의 제품 확인
+  const product = products[index];
+  if (product.id === productId) {
+    const discountInfo = discounts.find((d) => d.productId === productId);
+    const rate = discountInfo ? discountInfo.discount : 0;
+    const finalPrice = product.price * (1 - rate);
+    memo[productId] = finalPrice;
+    return finalPrice;
+  }
 
-  // 4. 결과 계산 및 메모리에 저장
-  const finalPrice = product.price * (1 - rate);
-  memo[productId] = finalPrice;
-
-  // 5. 결과 반환
-  return memo[productId];
+  // 4. 다음 제품 확인을 위한 재귀 호출
+  return calculateDiscountedPrice(productId, memo, index + 1);
 }
 
 // TEST
